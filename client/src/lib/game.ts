@@ -1,105 +1,99 @@
-import { CellState, GameState, GRID_SIZE, MINE_COUNT } from "@shared/schema";
+import { CellState, GameState, GRID_SIZE, BINGO_LETTERS, Pattern } from "@shared/schema";
+
+function shuffleArray<T>(array: T[]): T[] {
+  const shuffled = [...array];
+  for (let i = shuffled.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
+  }
+  return shuffled;
+}
 
 export function createEmptyGrid(): CellState[][] {
-  return Array(GRID_SIZE).fill(null).map(() =>
-    Array(GRID_SIZE).fill(null).map(() => ({
-      hasMine: false,
-      isRevealed: false,
-      adjacentMines: 0,
-    }))
-  );
+  // Generate numbers 1-25
+  const numbers = shuffleArray(Array.from({ length: 25 }, (_, i) => i + 1));
+
+  return Array(GRID_SIZE)
+    .fill(null)
+    .map((_, row) =>
+      Array(GRID_SIZE)
+        .fill(null)
+        .map((_, col) => ({
+          number: numbers[row * GRID_SIZE + col],
+          isSelected: false,
+        }))
+    );
+}
+
+function checkPattern(grid: CellState[][], type: 'row' | 'column' | 'diagonal', index: number): boolean {
+  if (type === 'row') {
+    return grid[index].every(cell => cell.isSelected);
+  } else if (type === 'column') {
+    return grid.every(row => row[index].isSelected);
+  } else if (type === 'diagonal') {
+    if (index === 0) {
+      return Array(GRID_SIZE).fill(null).every((_, i) => grid[i][i].isSelected);
+    } else {
+      return Array(GRID_SIZE).fill(null).every((_, i) => grid[i][GRID_SIZE - 1 - i].isSelected);
+    }
+  }
+  return false;
 }
 
 export function initializeGame(): GameState {
-  const grid = createEmptyGrid();
-  let minesPlaced = 0;
-
-  // Place mines randomly
-  while (minesPlaced < MINE_COUNT) {
-    const x = Math.floor(Math.random() * GRID_SIZE);
-    const y = Math.floor(Math.random() * GRID_SIZE);
-
-    if (!grid[y][x].hasMine) {
-      grid[y][x].hasMine = true;
-      minesPlaced++;
-    }
-  }
-
-  // Calculate adjacent mines
-  for (let y = 0; y < GRID_SIZE; y++) {
-    for (let x = 0; x < GRID_SIZE; x++) {
-      if (!grid[y][x].hasMine) {
-        let count = 0;
-        for (let dy = -1; dy <= 1; dy++) {
-          for (let dx = -1; dx <= 1; dx++) {
-            const ny = y + dy;
-            const nx = x + dx;
-            if (
-              ny >= 0 && ny < GRID_SIZE &&
-              nx >= 0 && nx < GRID_SIZE &&
-              grid[ny][nx].hasMine
-            ) {
-              count++;
-            }
-          }
-        }
-        grid[y][x].adjacentMines = count;
-      }
-    }
-  }
+  // Initialize patterns for all possible winning combinations
+  const patterns: Pattern[] = [
+    ...Array(GRID_SIZE).fill(null).map((_, i) => ({ type: 'row' as const, index: i, completed: false })),
+    ...Array(GRID_SIZE).fill(null).map((_, i) => ({ type: 'column' as const, index: i, completed: false })),
+    { type: 'diagonal' as const, index: 0, completed: false },
+    { type: 'diagonal' as const, index: 1, completed: false },
+  ];
 
   return {
-    grid,
-    moves: 0,
+    grid: createEmptyGrid(),
+    patterns,
+    bingoLetters: BINGO_LETTERS.map(letter => ({ letter, struck: false })),
     gameOver: false,
-    won: false,
+    moves: 0,
   };
 }
 
-export function revealCell(state: GameState, x: number, y: number): GameState {
-  if (state.gameOver || state.grid[y][x].isRevealed) {
+export function selectCell(state: GameState, x: number, y: number): GameState {
+  if (state.gameOver) {
     return state;
   }
 
   const newGrid = state.grid.map(row => [...row]);
-  newGrid[y][x] = { ...newGrid[y][x], isRevealed: true };
+  newGrid[y][x] = { ...newGrid[y][x], isSelected: true };
 
-  if (newGrid[y][x].hasMine) {
-    return {
-      ...state,
-      grid: newGrid,
-      gameOver: true,
-      won: false,
-    };
-  }
+  // Check all patterns and update their status
+  const newPatterns = state.patterns.map(pattern => ({
+    ...pattern,
+    completed: checkPattern(newGrid, pattern.type, pattern.index),
+  }));
 
-  // Reveal adjacent cells if no adjacent mines
-  if (newGrid[y][x].adjacentMines === 0) {
-    for (let dy = -1; dy <= 1; dy++) {
-      for (let dx = -1; dx <= 1; dx++) {
-        const ny = y + dy;
-        const nx = x + dx;
-        if (
-          ny >= 0 && ny < GRID_SIZE &&
-          nx >= 0 && nx < GRID_SIZE &&
-          !newGrid[ny][nx].isRevealed
-        ) {
-          const result = revealCell({ ...state, grid: newGrid }, nx, ny);
-          newGrid.splice(0, newGrid.length, ...result.grid);
-        }
-      }
+  // Count newly completed patterns
+  const newlyCompleted = newPatterns.filter(
+    (p, i) => p.completed && !state.patterns[i].completed
+  ).length;
+
+  // Update BINGO letters based on newly completed patterns
+  const newBingoLetters = [...state.bingoLetters];
+  for (let i = 0; i < newlyCompleted && i < newBingoLetters.length; i++) {
+    const nextUnstruckIndex = newBingoLetters.findIndex(l => !l.struck);
+    if (nextUnstruckIndex !== -1) {
+      newBingoLetters[nextUnstruckIndex] = { ...newBingoLetters[nextUnstruckIndex], struck: true };
     }
   }
 
-  // Check win condition
-  const won = newGrid.every(row =>
-    row.every(cell => cell.isRevealed || cell.hasMine)
-  );
+  // Check if game is won (all BINGO letters are struck)
+  const gameOver = newBingoLetters.every(l => l.struck);
 
   return {
     grid: newGrid,
+    patterns: newPatterns,
+    bingoLetters: newBingoLetters,
     moves: state.moves + 1,
-    gameOver: won,
-    won,
+    gameOver,
   };
 }

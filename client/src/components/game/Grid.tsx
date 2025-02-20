@@ -1,4 +1,4 @@
-import { GameState } from "@shared/schema";
+import { GameState, GRID_SIZE } from "@shared/schema";
 import { Cell } from "./Cell";
 
 interface GridProps {
@@ -8,13 +8,17 @@ interface GridProps {
 
 export function Grid({ gameState, onCellClick }: GridProps) {
   return (
-    <div className="grid grid-cols-10 gap-1 bg-muted p-4 rounded-lg shadow-md">
+    <div 
+      className="grid gap-1 bg-muted p-4 rounded-lg shadow-md"
+      style={{
+        gridTemplateColumns: `repeat(${GRID_SIZE}, 1fr)`
+      }}
+    >
       {gameState.grid.map((row, y) =>
         row.map((cell, x) => (
           <Cell
             key={`${x}-${y}`}
             cell={cell}
-            revealed={cell.isRevealed}
             onClick={() => onCellClick(x, y)}
           />
         ))

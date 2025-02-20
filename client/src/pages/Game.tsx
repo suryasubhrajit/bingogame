@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { Controls } from "@/components/game/Controls";
 import { Grid } from "@/components/game/Grid";
-import { initializeGame, revealCell } from "@/lib/game";
+import { initializeGame, selectCell } from "@/lib/game";
 import { GameState } from "@shared/schema";
 
 export default function Game() {
@@ -9,7 +9,7 @@ export default function Game() {
 
   const handleCellClick = (x: number, y: number) => {
     if (!gameState.gameOver) {
-      setGameState(prev => revealCell(prev, x, y));
+      setGameState(prev => selectCell(prev, x, y));
     }
   };
 
